@@ -10516,47 +10516,91 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 				for (let i = 0; i < w * h; i++) g[i] = .299 * data[i * 4] + .587 * data[i * 4 + 1] + .114 * data[i * 4 + 2];
 				return g;
 			};
-			const sobel = (g, w, h) => {
-				const out = new Float32Array(w * h);
+			const gradients = (g, w, h) => {
+				const mag = new Float32Array(w * h);
+				const ang = new Float32Array(w * h);
 				for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
-					const gx = -g[(y - 1) * w + (x - 1)] + g[(y - 1) * w + (x + 1)] - 2 * g[y * w + (x - 1)] + 2 * g[y * w + (x + 1)] - g[(y + 1) * w + (x - 1)] + g[(y + 1) * w + (x + 1)];
-					const gy = -g[(y - 1) * w + (x - 1)] - 2 * g[(y - 1) * w + x] - g[(y - 1) * w + (x + 1)] + g[(y + 1) * w + (x - 1)] + 2 * g[(y + 1) * w + x] + g[(y + 1) * w + (x + 1)];
-					out[y * w + x] = Math.sqrt(gx * gx + gy * gy);
+					const gx = g[y * w + (x + 1)] - g[y * w + (x - 1)];
+					const gy = g[(y + 1) * w + x] - g[(y - 1) * w + x];
+					mag[y * w + x] = Math.sqrt(gx * gx + gy * gy);
+					ang[y * w + x] = (Math.atan2(gy, gx) * 180 / Math.PI + 360) % 360;
 				}
-				return out;
+				return {
+					mag,
+					ang
+				};
+			};
+			const hogZone = (mag, ang, w, x0, y0, x1, y1) => {
+				const hist = new Float32Array(8);
+				for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+					const bin = Math.floor(ang[y * w + x] / 45) % 8;
+					hist[bin] += mag[y * w + x];
+				}
+				const total = hist.reduce((a, b) => a + b, 0) + 1e-6;
+				for (let b = 0; b < 8; b++) hist[b] /= total;
+				return hist;
+			};
+			const chiSq = (a, b) => {
+				let d = 0;
+				for (let i = 0; i < 8; i++) d += (a[i] - b[i]) ** 2 / (a[i] + b[i] + 1e-6);
+				return d;
+			};
+			const ssimZone = (cam, ref, w, x0, y0, x1, y1) => {
+				let mu1 = 0, mu2 = 0, n = 0;
+				for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+					mu1 += cam[y * w + x];
+					mu2 += ref[y * w + x];
+					n++;
+				}
+				mu1 /= n;
+				mu2 /= n;
+				let v1 = 0, v2 = 0, cov = 0;
+				for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
+					const d1 = cam[y * w + x] - mu1, d2 = ref[y * w + x] - mu2;
+					v1 += d1 * d1;
+					v2 += d2 * d2;
+					cov += d1 * d2;
+				}
+				v1 /= n;
+				v2 /= n;
+				cov /= n;
+				const c1 = 6.5025, c2 = 58.5225;
+				return (2 * mu1 * mu2 + c1) * (2 * cov + c2) / ((mu1 * mu1 + mu2 * mu2 + c1) * (v1 + v2 + c2));
 			};
 			const camGray = toGray(camData, W, H);
 			const refGray = toGray(refData, W, H);
-			const camEdge = sobel(camGray, W, H);
-			const refEdge = sobel(refGray, W, H);
-			const maxSobel = 1020 * Math.SQRT2;
+			const camGrad = gradients(camGray, W, H);
+			const refGrad = gradients(refGray, W, H);
 			const zoneW = Math.floor(W / ZONES);
 			const zoneH = Math.floor(H / ZONES);
-			const zoneDiff = Array.from({ length: ZONES }, () => Array(ZONES).fill(0));
-			let totalDiff = 0;
+			const zoneSim = Array.from({ length: ZONES }, () => Array(ZONES).fill(0));
+			let totalHog = 0, totalSsim = 0;
 			for (let gy = 0; gy < ZONES; gy++) for (let gx = 0; gx < ZONES; gx++) {
-				let sum = 0, count = 0;
-				for (let y = gy * zoneH; y < (gy + 1) * zoneH; y++) for (let x = gx * zoneW; x < (gx + 1) * zoneW; x++) {
-					sum += Math.abs(camEdge[y * W + x] - refEdge[y * W + x]) / maxSobel;
-					count++;
-				}
-				zoneDiff[gy][gx] = sum / count;
-				totalDiff += zoneDiff[gy][gx];
+				const x0 = gx * zoneW, y0 = gy * zoneH, x1 = x0 + zoneW, y1 = y0 + zoneH;
+				const camHog = hogZone(camGrad.mag, camGrad.ang, W, x0, y0, x1, y1);
+				const refHog = hogZone(refGrad.mag, refGrad.ang, W, x0, y0, x1, y1);
+				const hogSim = Math.max(0, 1 - chiSq(camHog, refHog) / 2);
+				const ssim = Math.max(0, ssimZone(camGray, refGray, W, x0, y0, x1, y1));
+				zoneSim[gy][gx] = .7 * hogSim + .3 * ssim;
+				totalHog += hogSim;
+				totalSsim += ssim;
 			}
-			const avgDiff = totalDiff / (ZONES * ZONES);
-			const score = Math.max(0, Math.round((1 - avgDiff * 4) * 100));
+			const N = ZONES * ZONES;
+			const hogScore = totalHog / N;
+			const ssimScore = totalSsim / N;
+			const score = Math.round((.7 * hogScore + .3 * ssimScore) * 100);
 			setAlignScore(score);
 			if (score >= 100) setHint("Perfekt! ✓");
 			else {
-				const leftDiff = (zoneDiff[0][0] + zoneDiff[1][0] + zoneDiff[2][0] + zoneDiff[3][0]) / ZONES;
-				const rightDiff = (zoneDiff[0][3] + zoneDiff[1][3] + zoneDiff[2][3] + zoneDiff[3][3]) / ZONES;
-				const topDiff = (zoneDiff[0][0] + zoneDiff[0][1] + zoneDiff[0][2] + zoneDiff[0][3]) / ZONES;
-				const bottomDiff = (zoneDiff[3][0] + zoneDiff[3][1] + zoneDiff[3][2] + zoneDiff[3][3]) / ZONES;
-				const hDiff = leftDiff - rightDiff;
-				const vDiff = topDiff - bottomDiff;
-				const threshold = .002;
+				const left = (zoneSim[0][0] + zoneSim[1][0] + zoneSim[2][0] + zoneSim[3][0]) / ZONES;
+				const right = (zoneSim[0][3] + zoneSim[1][3] + zoneSim[2][3] + zoneSim[3][3]) / ZONES;
+				const top = (zoneSim[0][0] + zoneSim[0][1] + zoneSim[0][2] + zoneSim[0][3]) / ZONES;
+				const bot = (zoneSim[3][0] + zoneSim[3][1] + zoneSim[3][2] + zoneSim[3][3]) / ZONES;
+				const hDiff = right - left;
+				const vDiff = bot - top;
+				const threshold = .05;
 				if (Math.abs(hDiff) > Math.abs(vDiff)) setHint(hDiff > threshold ? "← Nach links" : "→ Nach rechts");
-				else setHint(vDiff > threshold ? "↓ Kamera runter" : "↑ Kamera hoch");
+				else setHint(vDiff > threshold ? "↑ Kamera hoch" : "↓ Kamera runter");
 			}
 		}, 300);
 		return () => clearInterval(interval);
