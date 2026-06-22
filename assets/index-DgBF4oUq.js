@@ -10528,7 +10528,7 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 			}
 			const score = Math.round((1 - totalDiff / 9) * 100);
 			setAlignScore(score);
-			if (score >= 82) setHint("Perfekt! ✓");
+			if (score >= 95) setHint("Perfekt! ✓");
 			else {
 				const leftDiff = (zoneDiff[0][0] + zoneDiff[1][0] + zoneDiff[2][0]) / 3;
 				const rightDiff = (zoneDiff[0][2] + zoneDiff[1][2] + zoneDiff[2][2]) / 3;
@@ -10544,7 +10544,7 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 		return () => clearInterval(interval);
 	}, [cameraActive, basePhoto]);
 	(0, import_react.useEffect)(() => {
-		if (alignScore >= 82) {
+		if (alignScore >= 95) {
 			goodFramesRef.current += 1;
 			if (goodFramesRef.current >= 5) {
 				var _capturePhotoRef$curr;
@@ -10616,7 +10616,7 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 	(0, import_react.useEffect)(() => {
 		capturePhotoRef.current = capturePhoto;
 	}, [capturePhoto]);
-	const scoreColor = alignScore >= 82 ? "text-emerald-400" : alignScore >= 60 ? "text-yellow-400" : "text-red-400";
+	const scoreColor = alignScore >= 95 ? "text-emerald-400" : alignScore >= 60 ? "text-yellow-400" : "text-red-400";
 	if (cameraError) return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 		className: "fixed inset-0 bg-black flex flex-col items-center justify-center gap-6 p-8",
 		children: [
@@ -10713,14 +10713,14 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 							draggable: false
 						})
 					}),
-					hint && alignScore > 0 && alignScore < 82 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					hint && alignScore > 0 && alignScore < 95 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 						className: "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none",
 						children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 							className: "bg-black/70 backdrop-blur-sm text-white text-2xl font-bold px-6 py-3 rounded-2xl",
 							children: hint
 						})
 					}),
-					alignScore >= 82 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "absolute inset-0 border-4 border-emerald-400 pointer-events-none animate-pulse z-10" }),
+					alignScore >= 95 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "absolute inset-0 border-4 border-emerald-400 pointer-events-none animate-pulse z-10" }),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("canvas", {
 						ref: compareRef,
 						className: "hidden"
