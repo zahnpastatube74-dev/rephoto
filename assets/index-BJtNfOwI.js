@@ -10465,6 +10465,7 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 	const goodFramesRef = (0, import_react.useRef)(0);
 	const [cvLoading, setCvLoading] = (0, import_react.useState)(false);
 	const [cvReady, setCvReady] = (0, import_react.useState)(false);
+	const [cvToast, setCvToast] = (0, import_react.useState)(false);
 	const cvOrbRef = (0, import_react.useRef)(null);
 	const cvBFRef = (0, import_react.useRef)(null);
 	const refDescRef = (0, import_react.useRef)(null);
@@ -10512,6 +10513,8 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 				cvOrbRef.current = new cv.ORB(500);
 				cvBFRef.current = new cv.BFMatcher(cv.NORM_HAMMING, false);
 				setCvReady(true);
+				setCvToast(true);
+				setTimeout(() => setCvToast(false), 3e3);
 			} catch (e) {
 				console.error("OpenCV setup", e);
 			}
@@ -10783,6 +10786,10 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 							alt: "Overlay",
 							draggable: false
 						})
+					}),
+					cvToast && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
+						className: "absolute top-4 left-1/2 -translate-x-1/2 z-50 bg-emerald-500 text-white text-sm font-semibold px-4 py-2 rounded-full shadow-lg flex items-center gap-2",
+						children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "w-2 h-2 rounded-full bg-white" }), "ORB Matching bereit"]
 					}),
 					alignScore >= 100 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "absolute inset-0 border-4 border-emerald-400 pointer-events-none animate-pulse z-10" }),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("canvas", {
