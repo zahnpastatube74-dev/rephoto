@@ -10500,7 +10500,8 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 	(0, import_react.useEffect)(() => {
 		const interval = setInterval(() => {
 			if (!videoRef.current || !overlayImgRef.current || !compareRef.current || !cameraActive) return;
-			const W = 64, H = 48;
+			const W = 128, H = 96;
+			const ZONES = 4;
 			const canvas = compareRef.current;
 			canvas.width = W * 2;
 			canvas.height = H;
@@ -10510,11 +10511,11 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 			const camData = ctx.getImageData(0, 0, W, H).data;
 			ctx.drawImage(overlayImgRef.current, W, 0, W, H);
 			const refData = ctx.getImageData(W, 0, W, H).data;
-			const zoneW = Math.floor(W / 3);
-			const zoneH = Math.floor(H / 3);
-			const zoneDiff = Array.from({ length: 3 }, () => Array(3).fill(0));
+			const zoneW = Math.floor(W / ZONES);
+			const zoneH = Math.floor(H / ZONES);
+			const zoneDiff = Array.from({ length: ZONES }, () => Array(ZONES).fill(0));
 			let totalDiff = 0;
-			for (let gy = 0; gy < 3; gy++) for (let gx = 0; gx < 3; gx++) {
+			for (let gy = 0; gy < ZONES; gy++) for (let gx = 0; gx < ZONES; gx++) {
 				let sum = 0, count = 0;
 				for (let y = gy * zoneH; y < (gy + 1) * zoneH; y++) for (let x = gx * zoneW; x < (gx + 1) * zoneW; x++) {
 					const i = (y * W + x) * 4;
@@ -10526,17 +10527,17 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 				zoneDiff[gy][gx] = sum / count / 255;
 				totalDiff += zoneDiff[gy][gx];
 			}
-			const score = Math.round((1 - totalDiff / 9) * 100);
+			const score = Math.max(0, Math.round((1 - totalDiff / (ZONES * ZONES) * 2) * 100));
 			setAlignScore(score);
-			if (score >= 95) setHint("Perfekt! ✓");
+			if (score >= 100) setHint("Perfekt! ✓");
 			else {
-				const leftDiff = (zoneDiff[0][0] + zoneDiff[1][0] + zoneDiff[2][0]) / 3;
-				const rightDiff = (zoneDiff[0][2] + zoneDiff[1][2] + zoneDiff[2][2]) / 3;
-				const topDiff = (zoneDiff[0][0] + zoneDiff[0][1] + zoneDiff[0][2]) / 3;
-				const bottomDiff = (zoneDiff[2][0] + zoneDiff[2][1] + zoneDiff[2][2]) / 3;
+				const leftDiff = (zoneDiff[0][0] + zoneDiff[1][0] + zoneDiff[2][0] + zoneDiff[3][0]) / ZONES;
+				const rightDiff = (zoneDiff[0][3] + zoneDiff[1][3] + zoneDiff[2][3] + zoneDiff[3][3]) / ZONES;
+				const topDiff = (zoneDiff[0][0] + zoneDiff[0][1] + zoneDiff[0][2] + zoneDiff[0][3]) / ZONES;
+				const bottomDiff = (zoneDiff[3][0] + zoneDiff[3][1] + zoneDiff[3][2] + zoneDiff[3][3]) / ZONES;
 				const hDiff = leftDiff - rightDiff;
 				const vDiff = topDiff - bottomDiff;
-				const threshold = .05;
+				const threshold = .04;
 				if (Math.abs(hDiff) > Math.abs(vDiff)) setHint(hDiff > threshold ? "← Nach links" : "→ Nach rechts");
 				else setHint(vDiff > threshold ? "↓ Kamera runter" : "↑ Kamera hoch");
 			}
@@ -10544,7 +10545,7 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 		return () => clearInterval(interval);
 	}, [cameraActive, basePhoto]);
 	(0, import_react.useEffect)(() => {
-		if (alignScore >= 95) {
+		if (alignScore >= 100) {
 			goodFramesRef.current += 1;
 			if (goodFramesRef.current >= 5) {
 				var _capturePhotoRef$curr;
@@ -10616,7 +10617,7 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 	(0, import_react.useEffect)(() => {
 		capturePhotoRef.current = capturePhoto;
 	}, [capturePhoto]);
-	const scoreColor = alignScore >= 95 ? "text-emerald-400" : alignScore >= 60 ? "text-yellow-400" : "text-red-400";
+	const scoreColor = alignScore >= 100 ? "text-emerald-400" : alignScore >= 60 ? "text-yellow-400" : "text-red-400";
 	if (cameraError) return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 		className: "fixed inset-0 bg-black flex flex-col items-center justify-center gap-6 p-8",
 		children: [
@@ -10713,14 +10714,14 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 							draggable: false
 						})
 					}),
-					hint && alignScore > 0 && alignScore < 95 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					hint && alignScore > 0 && alignScore < 100 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 						className: "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none",
 						children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
 							className: "bg-black/70 backdrop-blur-sm text-white text-2xl font-bold px-6 py-3 rounded-2xl",
 							children: hint
 						})
 					}),
-					alignScore >= 95 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "absolute inset-0 border-4 border-emerald-400 pointer-events-none animate-pulse z-10" }),
+					alignScore >= 100 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "absolute inset-0 border-4 border-emerald-400 pointer-events-none animate-pulse z-10" }),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsx)("canvas", {
 						ref: compareRef,
 						className: "hidden"
