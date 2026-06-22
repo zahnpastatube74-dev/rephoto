@@ -11177,7 +11177,7 @@ function App() {
 							children: "RePhoto"
 						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
 							className: "text-white/40 text-xs",
-							children: "Historische Fotos nachstellen"
+							children: "Historische Fotos nachstellen · v2.0"
 						})] }), /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 							className: "flex gap-2",
 							children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
