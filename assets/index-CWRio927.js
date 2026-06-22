@@ -10457,7 +10457,6 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 	const [overlayOpacity, setOverlayOpacity] = (0, import_react.useState)(60);
 	const [videoScale, setVideoScale] = (0, import_react.useState)(1);
 	const [alignScore, setAlignScore] = (0, import_react.useState)(0);
-	const [hint, setHint] = (0, import_react.useState)("");
 	const [cameraError, setCameraError] = (0, import_react.useState)("");
 	const pinchRef = (0, import_react.useRef)(null);
 	const compareRef = (0, import_react.useRef)(null);
@@ -10501,7 +10500,6 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 		const interval = setInterval(() => {
 			if (!videoRef.current || !overlayImgRef.current || !compareRef.current || !cameraActive) return;
 			const W = 128, H = 96;
-			const ZONES = 4;
 			const canvas = compareRef.current;
 			canvas.width = W * 2;
 			canvas.height = H;
@@ -10511,97 +10509,48 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 			const camData = ctx.getImageData(0, 0, W, H).data;
 			ctx.drawImage(overlayImgRef.current, W, 0, W, H);
 			const refData = ctx.getImageData(W, 0, W, H).data;
-			const toGray = (data, w, h) => {
-				const g = new Float32Array(w * h);
-				for (let i = 0; i < w * h; i++) g[i] = .299 * data[i * 4] + .587 * data[i * 4 + 1] + .114 * data[i * 4 + 2];
+			const ZW = 8, ZH = 8;
+			const NX = Math.floor(W / ZW), NY = Math.floor(H / ZH);
+			const toGray = (data) => {
+				const g = new Float32Array(W * H);
+				for (let i = 0; i < W * H; i++) g[i] = .299 * data[i * 4] + .587 * data[i * 4 + 1] + .114 * data[i * 4 + 2];
 				return g;
 			};
-			const gradients = (g, w, h) => {
-				const mag = new Float32Array(w * h);
-				const ang = new Float32Array(w * h);
-				for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
-					const gx = g[y * w + (x + 1)] - g[y * w + (x - 1)];
-					const gy = g[(y + 1) * w + x] - g[(y - 1) * w + x];
-					mag[y * w + x] = Math.sqrt(gx * gx + gy * gy);
-					ang[y * w + x] = (Math.atan2(gy, gx) * 180 / Math.PI + 360) % 360;
+			const camG = toGray(camData);
+			const refG = toGray(refData);
+			const camFeat = [], refFeat = [];
+			for (let zy = 0; zy < NY; zy++) for (let zx = 0; zx < NX; zx++) {
+				let cGX = 0, cGY = 0, rGX = 0, rGY = 0, cnt = 0;
+				for (let y = zy * ZH + 1; y < (zy + 1) * ZH - 1; y++) for (let x = zx * ZW + 1; x < (zx + 1) * ZW - 1; x++) {
+					cGX += camG[y * W + (x + 1)] - camG[y * W + (x - 1)];
+					cGY += camG[(y + 1) * W + x] - camG[(y - 1) * W + x];
+					rGX += refG[y * W + (x + 1)] - refG[y * W + (x - 1)];
+					rGY += refG[(y + 1) * W + x] - refG[(y - 1) * W + x];
+					cnt++;
 				}
-				return {
-					mag,
-					ang
-				};
-			};
-			const hogZone = (mag, ang, w, x0, y0, x1, y1) => {
-				const hist = new Float32Array(8);
-				for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
-					const bin = Math.floor(ang[y * w + x] / 45) % 8;
-					hist[bin] += mag[y * w + x];
-				}
-				const total = hist.reduce((a, b) => a + b, 0) + 1e-6;
-				for (let b = 0; b < 8; b++) hist[b] /= total;
-				return hist;
-			};
-			const chiSq = (a, b) => {
-				let d = 0;
-				for (let i = 0; i < 8; i++) d += (a[i] - b[i]) ** 2 / (a[i] + b[i] + 1e-6);
-				return d;
-			};
-			const ssimZone = (cam, ref, w, x0, y0, x1, y1) => {
-				let mu1 = 0, mu2 = 0, n = 0;
-				for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
-					mu1 += cam[y * w + x];
-					mu2 += ref[y * w + x];
-					n++;
-				}
-				mu1 /= n;
-				mu2 /= n;
-				let v1 = 0, v2 = 0, cov = 0;
-				for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
-					const d1 = cam[y * w + x] - mu1, d2 = ref[y * w + x] - mu2;
-					v1 += d1 * d1;
-					v2 += d2 * d2;
-					cov += d1 * d2;
-				}
-				v1 /= n;
-				v2 /= n;
-				cov /= n;
-				const c1 = 6.5025, c2 = 58.5225;
-				return (2 * mu1 * mu2 + c1) * (2 * cov + c2) / ((mu1 * mu1 + mu2 * mu2 + c1) * (v1 + v2 + c2));
-			};
-			const camGray = toGray(camData, W, H);
-			const refGray = toGray(refData, W, H);
-			const camGrad = gradients(camGray, W, H);
-			const refGrad = gradients(refGray, W, H);
-			const zoneW = Math.floor(W / ZONES);
-			const zoneH = Math.floor(H / ZONES);
-			const zoneSim = Array.from({ length: ZONES }, () => Array(ZONES).fill(0));
-			let totalHog = 0, totalSsim = 0;
-			for (let gy = 0; gy < ZONES; gy++) for (let gx = 0; gx < ZONES; gx++) {
-				const x0 = gx * zoneW, y0 = gy * zoneH, x1 = x0 + zoneW, y1 = y0 + zoneH;
-				const camHog = hogZone(camGrad.mag, camGrad.ang, W, x0, y0, x1, y1);
-				const refHog = hogZone(refGrad.mag, refGrad.ang, W, x0, y0, x1, y1);
-				const hogSim = Math.max(0, 1 - chiSq(camHog, refHog) / 2);
-				const ssim = Math.max(0, ssimZone(camGray, refGray, W, x0, y0, x1, y1));
-				zoneSim[gy][gx] = .7 * hogSim + .3 * ssim;
-				totalHog += hogSim;
-				totalSsim += ssim;
+				camFeat.push(cGX / cnt, cGY / cnt);
+				refFeat.push(rGX / cnt, rGY / cnt);
 			}
-			const N = ZONES * ZONES;
-			const hogScore = totalHog / N;
-			const ssimScore = totalSsim / N;
-			const score = Math.round((.7 * hogScore + .3 * ssimScore) * 100);
-			setAlignScore(score);
-			if (score >= 100) setHint("Perfekt! ✓");
-			else {
-				const left = (zoneSim[0][0] + zoneSim[1][0] + zoneSim[2][0] + zoneSim[3][0]) / ZONES;
-				const right = (zoneSim[0][3] + zoneSim[1][3] + zoneSim[2][3] + zoneSim[3][3]) / ZONES;
-				const top = (zoneSim[0][0] + zoneSim[0][1] + zoneSim[0][2] + zoneSim[0][3]) / ZONES;
-				const bot = (zoneSim[3][0] + zoneSim[3][1] + zoneSim[3][2] + zoneSim[3][3]) / ZONES;
-				const hDiff = right - left;
-				const vDiff = bot - top;
-				const threshold = .05;
-				if (Math.abs(hDiff) > Math.abs(vDiff)) setHint(hDiff > threshold ? "← Nach links" : "→ Nach rechts");
-				else setHint(vDiff > threshold ? "↑ Kamera hoch" : "↓ Kamera runter");
-			}
+			const pearson = (a, b) => {
+				const n = a.length;
+				let ma = 0, mb = 0;
+				for (let i = 0; i < n; i++) {
+					ma += a[i];
+					mb += b[i];
+				}
+				ma /= n;
+				mb /= n;
+				let num = 0, da = 0, db = 0;
+				for (let i = 0; i < n; i++) {
+					const ai = a[i] - ma, bi = b[i] - mb;
+					num += ai * bi;
+					da += ai * ai;
+					db += bi * bi;
+				}
+				return da > 0 && db > 0 ? num / Math.sqrt(da * db) : 0;
+			};
+			const corr = pearson(camFeat, refFeat);
+			setAlignScore(Math.max(0, Math.round((corr - .5) / .5 * 100)));
 		}, 300);
 		return () => clearInterval(interval);
 	}, [cameraActive, basePhoto]);
@@ -10773,13 +10722,6 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 							style: { opacity: overlayOpacity / 100 },
 							alt: "Overlay",
 							draggable: false
-						})
-					}),
-					hint && alignScore > 0 && alignScore < 100 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-						className: "absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 pointer-events-none",
-						children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-							className: "bg-black/70 backdrop-blur-sm text-white text-2xl font-bold px-6 py-3 rounded-2xl",
-							children: hint
 						})
 					}),
 					alignScore >= 100 && /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", { className: "absolute inset-0 border-4 border-emerald-400 pointer-events-none animate-pulse z-10" }),
