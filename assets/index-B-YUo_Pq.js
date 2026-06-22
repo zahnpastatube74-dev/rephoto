@@ -10463,6 +10463,12 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 	const overlayImgRef = (0, import_react.useRef)(null);
 	const capturePhotoRef = (0, import_react.useRef)(null);
 	const goodFramesRef = (0, import_react.useRef)(0);
+	const [cvLoading, setCvLoading] = (0, import_react.useState)(false);
+	const [cvReady, setCvReady] = (0, import_react.useState)(false);
+	const cvOrbRef = (0, import_react.useRef)(null);
+	const cvBFRef = (0, import_react.useRef)(null);
+	const refDescRef = (0, import_react.useRef)(null);
+	const refKpCountRef = (0, import_react.useRef)(0);
 	const startCamera = (0, import_react.useCallback)(async (deviceId) => {
 		if (streamRef.current) streamRef.current.getTracks().forEach((t) => t.stop());
 		setCameraError("");
@@ -10497,63 +10503,111 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 		};
 	}, [basePhoto]);
 	(0, import_react.useEffect)(() => {
-		const interval = setInterval(() => {
-			if (!videoRef.current || !overlayImgRef.current || !compareRef.current || !cameraActive) return;
-			const W = 128, H = 96;
-			const canvas = compareRef.current;
-			canvas.width = W * 2;
-			canvas.height = H;
-			const ctx = canvas.getContext("2d");
-			if (!ctx) return;
-			ctx.drawImage(videoRef.current, 0, 0, W, H);
-			const camData = ctx.getImageData(0, 0, W, H).data;
-			ctx.drawImage(overlayImgRef.current, W, 0, W, H);
-			const refData = ctx.getImageData(W, 0, W, H).data;
-			const ZW = 8, ZH = 8;
-			const NX = Math.floor(W / ZW), NY = Math.floor(H / ZH);
-			const toGray = (data) => {
-				const g = new Float32Array(W * H);
-				for (let i = 0; i < W * H; i++) g[i] = .299 * data[i * 4] + .587 * data[i * 4 + 1] + .114 * data[i * 4 + 2];
-				return g;
-			};
-			const camG = toGray(camData);
-			const refG = toGray(refData);
-			const camFeat = [], refFeat = [];
-			for (let zy = 0; zy < NY; zy++) for (let zx = 0; zx < NX; zx++) {
-				let cGX = 0, cGY = 0, rGX = 0, rGY = 0, cnt = 0;
-				for (let y = zy * ZH + 1; y < (zy + 1) * ZH - 1; y++) for (let x = zx * ZW + 1; x < (zx + 1) * ZW - 1; x++) {
-					cGX += camG[y * W + (x + 1)] - camG[y * W + (x - 1)];
-					cGY += camG[(y + 1) * W + x] - camG[(y - 1) * W + x];
-					rGX += refG[y * W + (x + 1)] - refG[y * W + (x - 1)];
-					rGY += refG[(y + 1) * W + x] - refG[(y - 1) * W + x];
-					cnt++;
-				}
-				camFeat.push(cGX / cnt, cGY / cnt);
-				refFeat.push(rGX / cnt, rGY / cnt);
+		var _window$cv;
+		if (cvReady) return;
+		setCvLoading(true);
+		const setup = () => {
+			const cv = window.cv;
+			try {
+				cvOrbRef.current = new cv.ORB(500);
+				cvBFRef.current = new cv.BFMatcher(cv.NORM_HAMMING, false);
+				setCvReady(true);
+			} catch (e) {
+				console.error("OpenCV setup", e);
 			}
-			const pearson = (a, b) => {
-				const n = a.length;
-				let ma = 0, mb = 0;
-				for (let i = 0; i < n; i++) {
-					ma += a[i];
-					mb += b[i];
+			setCvLoading(false);
+		};
+		if ((_window$cv = window.cv) === null || _window$cv === void 0 ? void 0 : _window$cv.Mat) {
+			setup();
+			return;
+		}
+		if (!document.getElementById("opencv-js")) {
+			const s = document.createElement("script");
+			s.id = "opencv-js";
+			s.async = true;
+			s.src = "https://docs.opencv.org/4.10.0/opencv.js";
+			document.head.appendChild(s);
+		}
+		const check = setInterval(() => {
+			var _window$cv2;
+			if ((_window$cv2 = window.cv) === null || _window$cv2 === void 0 ? void 0 : _window$cv2.Mat) {
+				clearInterval(check);
+				setup();
+			}
+		}, 400);
+		return () => clearInterval(check);
+	}, [cvReady]);
+	(0, import_react.useEffect)(() => {
+		if (!cvReady || !overlayImgRef.current || !basePhoto) return;
+		const cv = window.cv;
+		const W = 320, H = 240;
+		const c = document.createElement("canvas");
+		c.width = W;
+		c.height = H;
+		const ctx = c.getContext("2d");
+		ctx.drawImage(overlayImgRef.current, 0, 0, W, H);
+		try {
+			const mat = cv.matFromImageData(ctx.getImageData(0, 0, W, H));
+			const gray = new cv.Mat();
+			cv.cvtColor(mat, gray, cv.COLOR_RGBA2GRAY);
+			const kp = new cv.KeyPointVector();
+			const desc = new cv.Mat();
+			const mask = new cv.Mat();
+			cvOrbRef.current.detectAndCompute(gray, mask, kp, desc);
+			if (refDescRef.current) refDescRef.current.delete();
+			refDescRef.current = desc;
+			refKpCountRef.current = kp.size();
+			mat.delete();
+			gray.delete();
+			kp.delete();
+			mask.delete();
+		} catch (e) {
+			console.error("Ref-Extraktion", e);
+		}
+	}, [cvReady, basePhoto]);
+	(0, import_react.useEffect)(() => {
+		if (!cvReady || !cameraActive) return;
+		const interval = setInterval(() => {
+			if (!videoRef.current || !refDescRef.current || refKpCountRef.current === 0) return;
+			const cv = window.cv;
+			const W = 320, H = 240;
+			const c = document.createElement("canvas");
+			c.width = W;
+			c.height = H;
+			const ctx = c.getContext("2d");
+			ctx.drawImage(videoRef.current, 0, 0, W, H);
+			try {
+				const mat = cv.matFromImageData(ctx.getImageData(0, 0, W, H));
+				const gray = new cv.Mat();
+				cv.cvtColor(mat, gray, cv.COLOR_RGBA2GRAY);
+				const kp = new cv.KeyPointVector();
+				const desc = new cv.Mat();
+				const mask = new cv.Mat();
+				cvOrbRef.current.detectAndCompute(gray, mask, kp, desc);
+				let score = 0;
+				if (!desc.empty()) {
+					const matches = new cv.DMatchVectorVector();
+					cvBFRef.current.knnMatch(refDescRef.current, desc, matches, 2);
+					let good = 0;
+					for (let i = 0; i < matches.size(); i++) {
+						const m = matches.get(i);
+						if (m.size() >= 2 && m.get(0).distance < .75 * m.get(1).distance) good++;
+					}
+					score = Math.min(100, Math.round(good / refKpCountRef.current * 400));
+					matches.delete();
 				}
-				ma /= n;
-				mb /= n;
-				let num = 0, da = 0, db = 0;
-				for (let i = 0; i < n; i++) {
-					const ai = a[i] - ma, bi = b[i] - mb;
-					num += ai * bi;
-					da += ai * ai;
-					db += bi * bi;
-				}
-				return da > 0 && db > 0 ? num / Math.sqrt(da * db) : 0;
-			};
-			const corr = pearson(camFeat, refFeat);
-			setAlignScore(Math.max(0, Math.round((corr - .5) / .5 * 100)));
-		}, 300);
+				setAlignScore(score);
+				mat.delete();
+				gray.delete();
+				kp.delete();
+				desc.delete();
+				mask.delete();
+			} catch (e) {
+				console.error("ORB frame", e);
+			}
+		}, 500);
 		return () => clearInterval(interval);
-	}, [cameraActive, basePhoto]);
+	}, [cvReady, cameraActive]);
 	(0, import_react.useEffect)(() => {
 		if (alignScore >= 100) {
 			goodFramesRef.current += 1;
@@ -10670,15 +10724,21 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 					}),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 						className: "flex flex-col items-center",
-						children: [cameraActive ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
+						children: [cameraActive ? cvLoading ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "text-white/60 text-sm animate-pulse",
+							children: "Lade KI…"
+						}) : cvReady ? /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("span", {
 							className: `text-xl font-bold ${scoreColor}`,
 							children: [alignScore, "%"]
+						}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
+							className: "text-white/40 text-sm",
+							children: "–"
 						}) : /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 							className: "text-white/40 text-sm",
 							children: "Kamera startet…"
 						}), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("span", {
 							className: "text-white/40 text-xs",
-							children: "Ausrichtung"
+							children: cvReady ? "ORB Matching" : "Ausrichtung"
 						})]
 					}),
 					/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
