@@ -10492,7 +10492,7 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 	}, [startCamera]);
 	(0, import_react.useEffect)(() => {
 		if (!basePhoto) return;
-		const img = new Image();
+		const img = new window.Image();
 		img.src = basePhoto;
 		img.onload = () => {
 			overlayImgRef.current = img;
