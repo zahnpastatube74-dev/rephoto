@@ -10263,45 +10263,45 @@ var X = createLucideIcon("x", [["path", {
 var AppErrorBoundary = class extends import_react.Component {
 	constructor(..._args) {
 		super(..._args);
-		_defineProperty(this, "state", { error: null });
+		_defineProperty(this, "state", {
+			error: null,
+			stack: null
+		});
 	}
 	static getDerivedStateFromError(e) {
-		return { error: e.message };
+		return {
+			error: e.message,
+			stack: e.stack ?? null
+		};
 	}
 	render() {
 		if (this.state.error) return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("div", {
 			style: {
 				background: "#0f1117",
 				minHeight: "100vh",
-				display: "flex",
-				flexDirection: "column",
-				alignItems: "center",
-				justifyContent: "center",
-				padding: 32,
+				overflow: "auto",
+				padding: 24,
 				color: "white",
 				fontFamily: "system-ui"
 			},
 			children: [
-				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
-					style: { fontSize: 48 },
-					children: "⚠️"
-				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+				/* @__PURE__ */ (0, import_jsx_runtime.jsxs)("p", {
 					style: {
-						marginTop: 16,
 						color: "#f87171",
-						textAlign: "center"
+						fontWeight: 600,
+						fontSize: 18
 					},
-					children: "App-Fehler"
+					children: ["App-Fehler: ", this.state.error]
 				}),
-				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("p", {
+				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("pre", {
 					style: {
-						marginTop: 8,
-						color: "rgba(255,255,255,0.4)",
-						fontSize: 12,
-						textAlign: "center"
+						marginTop: 12,
+						color: "rgba(255,255,255,0.5)",
+						fontSize: 10,
+						whiteSpace: "pre-wrap",
+						wordBreak: "break-all"
 					},
-					children: this.state.error
+					children: this.state.stack
 				}),
 				/* @__PURE__ */ (0, import_jsx_runtime.jsx)("button", {
 					onClick: () => window.location.reload(),
@@ -10312,8 +10312,7 @@ var AppErrorBoundary = class extends import_react.Component {
 						border: "none",
 						borderRadius: 12,
 						padding: "12px 24px",
-						fontSize: 16,
-						fontWeight: 600
+						fontSize: 16
 					},
 					children: "Neu laden"
 				})
