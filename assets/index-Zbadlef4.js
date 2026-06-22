@@ -10511,6 +10511,25 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 			const camData = ctx.getImageData(0, 0, W, H).data;
 			ctx.drawImage(overlayImgRef.current, W, 0, W, H);
 			const refData = ctx.getImageData(W, 0, W, H).data;
+			const toGray = (data, w, h) => {
+				const g = new Float32Array(w * h);
+				for (let i = 0; i < w * h; i++) g[i] = .299 * data[i * 4] + .587 * data[i * 4 + 1] + .114 * data[i * 4 + 2];
+				return g;
+			};
+			const sobel = (g, w, h) => {
+				const out = new Float32Array(w * h);
+				for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+					const gx = -g[(y - 1) * w + (x - 1)] + g[(y - 1) * w + (x + 1)] - 2 * g[y * w + (x - 1)] + 2 * g[y * w + (x + 1)] - g[(y + 1) * w + (x - 1)] + g[(y + 1) * w + (x + 1)];
+					const gy = -g[(y - 1) * w + (x - 1)] - 2 * g[(y - 1) * w + x] - g[(y - 1) * w + (x + 1)] + g[(y + 1) * w + (x - 1)] + 2 * g[(y + 1) * w + x] + g[(y + 1) * w + (x + 1)];
+					out[y * w + x] = Math.sqrt(gx * gx + gy * gy);
+				}
+				return out;
+			};
+			const camGray = toGray(camData, W, H);
+			const refGray = toGray(refData, W, H);
+			const camEdge = sobel(camGray, W, H);
+			const refEdge = sobel(refGray, W, H);
+			const maxSobel = 1020 * Math.SQRT2;
 			const zoneW = Math.floor(W / ZONES);
 			const zoneH = Math.floor(H / ZONES);
 			const zoneDiff = Array.from({ length: ZONES }, () => Array(ZONES).fill(0));
@@ -10518,16 +10537,14 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 			for (let gy = 0; gy < ZONES; gy++) for (let gx = 0; gx < ZONES; gx++) {
 				let sum = 0, count = 0;
 				for (let y = gy * zoneH; y < (gy + 1) * zoneH; y++) for (let x = gx * zoneW; x < (gx + 1) * zoneW; x++) {
-					const i = (y * W + x) * 4;
-					const cg = .299 * camData[i] + .587 * camData[i + 1] + .114 * camData[i + 2];
-					const rg = .299 * refData[i] + .587 * refData[i + 1] + .114 * refData[i + 2];
-					sum += Math.abs(cg - rg);
+					sum += Math.abs(camEdge[y * W + x] - refEdge[y * W + x]) / maxSobel;
 					count++;
 				}
-				zoneDiff[gy][gx] = sum / count / 255;
+				zoneDiff[gy][gx] = sum / count;
 				totalDiff += zoneDiff[gy][gx];
 			}
-			const score = Math.max(0, Math.round((1 - totalDiff / (ZONES * ZONES) * 2) * 100));
+			const avgDiff = totalDiff / (ZONES * ZONES);
+			const score = Math.max(0, Math.round((1 - avgDiff * 4) * 100));
 			setAlignScore(score);
 			if (score >= 100) setHint("Perfekt! ✓");
 			else {
@@ -10537,7 +10554,7 @@ function CameraView({ basePhoto, baseExif, onSave, onBack, projectId }) {
 				const bottomDiff = (zoneDiff[3][0] + zoneDiff[3][1] + zoneDiff[3][2] + zoneDiff[3][3]) / ZONES;
 				const hDiff = leftDiff - rightDiff;
 				const vDiff = topDiff - bottomDiff;
-				const threshold = .04;
+				const threshold = .002;
 				if (Math.abs(hDiff) > Math.abs(vDiff)) setHint(hDiff > threshold ? "← Nach links" : "→ Nach rechts");
 				else setHint(vDiff > threshold ? "↓ Kamera runter" : "↑ Kamera hoch");
 			}
